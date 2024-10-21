@@ -1,0 +1,6 @@
+pandas
+os
+yfinance
+talib
+sklearn
+tkinter
