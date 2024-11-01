@@ -6,13 +6,13 @@ from model import train_model
 # Function to predict the close price for today
 def predict_close(ticker):
     try:
-        # Fetch and preprocess the data
+        # Fetch and preprocess data
         df_scaled, df, scaler = preprocess_data(ticker)
-        
-        # Train the model and predict today's close price
         predicted_close_today = train_model(df_scaled, scaler)
-        
         return round(predicted_close_today, 2)
+    except ValueError as ve:
+        messagebox.showerror("Error", str(ve))
+        return None
     except Exception as e:
         messagebox.showerror("Error", f"Prediction failed: {e}")
         return None

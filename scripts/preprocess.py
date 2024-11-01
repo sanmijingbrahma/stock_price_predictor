@@ -1,34 +1,44 @@
-import pandas as pd
-import os
 import yfinance as yf
-import talib as ta
+import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+import numpy as np
 
-# Function to fetch and preprocess the latest data
 def preprocess_data(ticker):
-    # Fetch historical data for the stock
-    df = yf.download(ticker, period="6mo", interval="1d")
+    # Fetch data from yfinance
+    df = yf.download(ticker, period="1y", interval="1d")
     
-    # Drop rows with missing values (if any)
-    df.dropna(inplace=True)
+    # Check if data was fetched successfully
+    if df.empty:
+        raise ValueError(f"No data available for ticker {ticker}. Please check the ticker symbol or try again later.")
 
-    # Add technical indicators using TA-lib
-    df['EMA_10'] = ta.EMA(df['Close'], timeperiod=10)
-    df['RSI_14'] = ta.RSI(df['Close'], timeperiod=14)
-    df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = ta.BBANDS(df['Close'], timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
-    df['MACD'], df['MACD_Signal'], df['MACD_Hist'] = ta.MACD(df['Close'], fastperiod=12, slowperiod=26, signalperiod=9)
-    df['STOCH_K'], df['STOCH_D'] = ta.STOCH(df['High'], df['Low'], df['Close'], fastk_period=14, slowk_period=3, slowd_period=3)
+    # Ensure 'Close' column exists
+    if 'Close' not in df.columns:
+        raise ValueError("The dataset does not contain a 'Close' column. Cannot perform prediction.")
 
-    # Remove NaN values caused by indicators
-    df.dropna(inplace=True)
+    # Create the required features
+    df['SMA_10'] = df['Close'].rolling(window=10).mean()
+    df['SMA_50'] = df['Close'].rolling(window=50).mean()
+    df['RSI'] = calculate_rsi(df['Close'])
+    df['MACD'] = calculate_macd(df['Close'])
+    
+    # Drop any rows with missing values
+    df = df.dropna()
 
-    # Scale the data for ML models
+    # Scale the data using MinMaxScaler
     scaler = MinMaxScaler()
-    df_scaled = scaler.fit_transform(df[['Close', 'EMA_10', 'RSI_14', 'BB_Upper', 'BB_Lower', 'MACD', 'MACD_Signal', 'STOCH_K', 'STOCH_D']])
+    df_scaled = scaler.fit_transform(df[['Close', 'SMA_10', 'SMA_50', 'RSI', 'MACD']])
 
-    # Return the scaled dataframe, raw dataframe, and scaler
     return df_scaled, df, scaler
 
-if __name__ == "__main__":
-    ticker = 'TCS.NS'  # Example stock ticker
-    preprocess_data(ticker)
+# Helper functions for indicators
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+def calculate_macd(series, short_period=12, long_period=26):
+    ema_short = series.ewm(span=short_period, adjust=False).mean()
+    ema_long = series.ewm(span=long_period, adjust=False).mean()
+    return ema_short - ema_long
