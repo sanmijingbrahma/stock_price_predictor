@@ -1,44 +1,30 @@
 import yfinance as yf
-import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
+import talib
 
 def preprocess_data(ticker):
-    # Fetch data from yfinance
     df = yf.download(ticker, period="1y", interval="1d")
     
-    # Check if data was fetched successfully
     if df.empty:
         raise ValueError(f"No data available for ticker {ticker}. Please check the ticker symbol or try again later.")
-
-    # Ensure 'Close' column exists
     if 'Close' not in df.columns:
         raise ValueError("The dataset does not contain a 'Close' column. Cannot perform prediction.")
 
-    # Create the required features
-    df['SMA_10'] = df['Close'].rolling(window=10).mean()
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    df['RSI'] = calculate_rsi(df['Close'])
-    df['MACD'] = calculate_macd(df['Close'])
+    # Adding more indicators
+    df['SMA_10'] = talib.SMA(df['Close'], timeperiod=10)
+    df['SMA_50'] = talib.SMA(df['Close'], timeperiod=50)
+    df['RSI'] = talib.RSI(df['Close'])
+    df['MACD'], _, _ = talib.MACD(df['Close'])
+    df['Bollinger_Upper'], df['Bollinger_Middle'], df['Bollinger_Lower'] = talib.BBANDS(df['Close'])
+    df['ATR'] = talib.ATR(df['High'], df['Low'], df['Close'])
+    df['STOCH_K'], df['STOCH_D'] = talib.STOCH(df['High'], df['Low'], df['Close'])
     
-    # Drop any rows with missing values
+    # Drop rows with NaN values from indicators
     df = df.dropna()
 
-    # Scale the data using MinMaxScaler
+    # Scale features
     scaler = MinMaxScaler()
-    df_scaled = scaler.fit_transform(df[['Close', 'SMA_10', 'SMA_50', 'RSI', 'MACD']])
+    df_scaled = scaler.fit_transform(df[['Close', 'SMA_10', 'SMA_50', 'RSI', 'MACD', 'Bollinger_Upper', 'Bollinger_Middle', 'Bollinger_Lower', 'ATR', 'STOCH_K', 'STOCH_D']])
 
     return df_scaled, df, scaler
-
-# Helper functions for indicators
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-def calculate_macd(series, short_period=12, long_period=26):
-    ema_short = series.ewm(span=short_period, adjust=False).mean()
-    ema_long = series.ewm(span=long_period, adjust=False).mean()
-    return ema_short - ema_long
